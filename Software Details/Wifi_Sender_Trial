@@ -1,0 +1,66 @@
+from machine import Pin, PWM, I2C
+import time
+import math
+
+# --------------------
+# I2C SETUP (MPU6050)
+# --------------------
+i2c = I2C(0, scl=Pin(22), sda=Pin(21))
+MPU_ADDR = 0x68
+
+# Wake up MPU6050
+i2c.writeto_mem(MPU_ADDR, 0x6B, b'\x00')
+
+# --------------------
+# SERVO SETUP
+# --------------------
+servo_x = PWM(Pin(18), freq=50)  # forward/back
+servo_y = PWM(Pin(19), freq=50)  # left/right
+
+def set_servo(servo, angle):
+    min_duty = 26
+    max_duty = 123
+    duty = int(min_duty + (angle / 180) * (max_duty - min_duty))
+    servo.duty(duty)
+
+# --------------------
+# READ MPU6050
+# --------------------
+def read_mpu():
+    data = i2c.readfrom_mem(MPU_ADDR, 0x3B, 6)
+
+    ax = int.from_bytes(data[0:2], 'big', True)
+    ay = int.from_bytes(data[2:4], 'big', True)
+    az = int.from_bytes(data[4:6], 'big', True)
+
+    return ax, ay, az
+
+# --------------------
+# MAIN LOOP
+# --------------------
+while True:
+    ax, ay, az = read_mpu()
+
+    # Convert to tilt angles
+    try:
+        pitch = math.atan2(ax, az) * 180 / math.pi   # forward/back
+        roll  = math.atan2(ay, az) * 180 / math.pi   # left/right
+    except:
+        pitch = 0
+        roll = 0
+
+    # Map tilt to servo angle (limit range)
+    servo_x_angle = int(90 + pitch)
+    servo_y_angle = int(90 + roll)
+
+    # Clamp values (0–180)
+    servo_x_angle = max(0, min(180, servo_x_angle))
+    servo_y_angle = max(0, min(180, servo_y_angle))
+
+    # Move servos
+    set_servo(servo_x, servo_x_angle)
+    set_servo(servo_y, servo_y_angle)
+
+    print("Pitch:", pitch, "Roll:", roll)
+
+    time.sleep(0.05)
