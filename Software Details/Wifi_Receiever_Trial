@@ -1,0 +1,70 @@
+from machine import Pin, PWM
+import network
+import espnow
+import time
+
+# --------------------
+# WIFI + ESP-NOW
+# --------------------
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+wlan.config(channel=1)  # 🔥 SAME CHANNEL
+
+e = espnow.ESPNow()
+e.active(True)
+
+print("Receiver ready...")
+
+# --------------------
+# SERVOS
+# --------------------
+servo_x = PWM(Pin(18), freq=50)
+servo_y = PWM(Pin(19), freq=50)
+
+def set_servo(servo, angle):
+    min_duty = 26
+    max_duty = 123
+    duty = int(min_duty + (angle / 180) * (max_duty - min_duty))
+    servo.duty(duty)
+
+# Initial positions
+current_x = 90
+current_y = 90
+
+# --------------------
+# LOOP
+# --------------------
+while True:
+    host, msg = e.recv()
+
+    if msg:
+        print("Raw:", msg)
+
+        try:
+            data = msg.decode().strip()
+            pitch, roll = data.split(',')
+
+            pitch = float(pitch)
+            roll  = float(roll)
+
+            # 🔥 SCALE for bigger movement
+            target_x = 90 + pitch * 2
+            target_y = 90 + roll * 2
+
+            # Clamp
+            target_x = max(0, min(180, target_x))
+            target_y = max(0, min(180, target_y))
+
+            # 🔥 SMOOTHING
+            current_x += (target_x - current_x) * 0.2
+            current_y += (target_y - current_y) * 0.2
+
+            set_servo(servo_x, int(current_x))
+            set_servo(servo_y, int(current_y))
+
+            print("Pitch:", pitch, "Roll:", roll)
+
+        except Exception as e:
+            print("Error:", e)
+
+    time.sleep(0.01)
