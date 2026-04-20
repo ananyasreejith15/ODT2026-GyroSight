@@ -1,10 +1,10 @@
 **Project Title**
 
-[Enter your project name here]
+GyroSight
 
 **📌 Project Overview**
 
-[Provide a short description of your project]
+GyroSight is a wireless, gesture-controlled turret that translates natural hand tilts into precise servo-driven aiming via MPU6050 sensors and ESP32 connectivity. It actively scans surroundings with an ultrasonic sensor, auto-activates a laser on detection and delivers intuitive, embodied human-machine interaction.
 
 
 **📂 Repository Structure**
@@ -28,4 +28,4 @@ Media → Weekly progress and final output
 
 
 **👥 Team Members**
-[Name]
+Ananya Sreejith & Aakash Kadu
