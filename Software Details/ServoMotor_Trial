@@ -1,0 +1,91 @@
+from machine import Pin, PWM, time_pulse_us
+import network, espnow, time
+
+# ---------------- WIFI + ESP-NOW ----------------
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+wlan.config(channel=1)
+
+e = espnow.ESPNow()
+e.active(True)
+
+print("Receiver ready...")
+
+# ---------------- SERVOS ----------------
+servo_x = PWM(Pin(18), freq=50)
+servo_y = PWM(Pin(19), freq=50)
+
+def set_servo(servo, angle):
+    min_duty = 26
+    max_duty = 123
+    duty = int(min_duty + (angle / 180) * (max_duty - min_duty))
+    servo.duty(duty)
+
+current_x = 90
+current_y = 90
+
+# ---------------- ULTRASONIC ----------------
+trig = Pin(33, Pin.OUT)
+echo = Pin(32, Pin.IN)
+
+def get_distance():
+    trig.off()
+    time.sleep_us(2)
+
+    trig.on()
+    time.sleep_us(10)
+    trig.off()
+
+    duration = time_pulse_us(echo, 1, 30000)
+
+    if duration < 0:
+        return 999
+
+    distance = (duration * 0.0343) / 2
+    return distance
+
+# ---------------- LASER ----------------
+laser = Pin(23, Pin.OUT)
+
+# ---------------- LOOP ----------------
+while True:
+
+    # ---- RECEIVE DATA ----
+    host, msg = e.recv()
+
+    if msg:
+        try:
+            data = msg.decode().strip()
+            pitch, roll = data.split(',')
+
+            pitch = float(pitch)
+            roll  = float(roll)
+
+            # map tilt → servo
+            target_x = 90 + pitch * 2
+            target_y = 90 + roll * 2
+
+            target_x = max(0, min(180, target_x))
+            target_y = max(0, min(180, target_y))
+
+            # smooth motion
+            current_x += (target_x - current_x) * 0.3
+            current_y += (target_y - current_y) * 0.3
+
+            set_servo(servo_x, int(current_x))
+            set_servo(servo_y, int(current_y))
+
+        except Exception as err:
+            print("Decode error:", err)
+
+    # ---- ULTRASONIC ----
+    distance = get_distance()
+    print("Distance:", distance)
+
+    # ---- LASER CONTROL ----
+    if distance < 50:
+        laser.value(1)
+    else:
+        laser.value(0)
+
+    time.sleep(0.02)
