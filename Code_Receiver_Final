@@ -1,0 +1,158 @@
+from machine import Pin, PWM
+import network, espnow, time
+
+# --------------------
+# WIFI + ESP-NOW
+# --------------------
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+
+e = espnow.ESPNow()
+e.active(True)
+
+print("Receiver Ready")
+
+# --------------------
+# SERVO SETUP
+# --------------------
+servo_x = PWM(Pin(18), freq=50)      # up/down
+servo_y = PWM(Pin(19), freq=50)      # left/right
+servo_scan = PWM(Pin(25), freq=50)   # ultrasonic scan
+
+# --------------------
+# ULTRASONIC SENSOR
+# --------------------
+trig = Pin(33, Pin.OUT)
+echo = Pin(32, Pin.IN)
+
+# --------------------
+# LASER SETUP (PIN 23)
+# --------------------
+laser = Pin(23, Pin.OUT)
+laser.off()   # Start with laser OFF
+
+# --------------------
+# SERVO FUNCTION
+# --------------------
+def set_servo(servo, angle):
+    min_duty = 26
+    max_duty = 123
+
+    # Safety clamp
+    if angle < 0:
+        angle = 0
+    if angle > 180:
+        angle = 180
+
+    duty = int(min_duty + (angle / 180) * (max_duty - min_duty))
+    servo.duty(duty)
+
+# --------------------
+# DISTANCE FUNCTION
+# --------------------
+def get_distance():
+
+    pulse_start = 0
+    pulse_end = 0
+
+    # Send trigger pulse
+    trig.off()
+    time.sleep_us(2)
+
+    trig.on()
+    time.sleep_us(10)
+    trig.off()
+
+    timeout = 30000  # microseconds
+
+    start_time = time.ticks_us()
+
+    # Wait for echo HIGH
+    while echo.value() == 0:
+        pulse_start = time.ticks_us()
+
+        if time.ticks_diff(pulse_start, start_time) > timeout:
+            return 999
+
+    start_time = time.ticks_us()
+
+    # Wait for echo LOW
+    while echo.value() == 1:
+        pulse_end = time.ticks_us()
+
+        if time.ticks_diff(pulse_end, start_time) > timeout:
+            return 999
+
+    duration = time.ticks_diff(pulse_end, pulse_start)
+
+    distance = (duration * 0.0343) / 2
+
+    return distance
+
+# --------------------
+# INITIAL POSITIONS
+# --------------------
+last_x = 90
+last_y = 90
+
+scan_angle = 0
+direction = 1
+
+DETECTION_DISTANCE = 50   # distance threshold in cm
+
+# --------------------
+# MAIN LOOP
+# --------------------
+while True:
+
+    # -------- ESP-NOW CONTROL --------
+    host, msg = e.recv()
+
+    if msg:
+        try:
+            data = msg.decode().strip()
+
+            angle_x, angle_y = data.split(',')
+
+            angle_x = int(angle_x)
+            angle_y = int(angle_y)
+
+            # DEAD ZONE (ANTI-JITTER)
+            if abs(angle_x - last_x) > 2:
+                set_servo(servo_x, angle_x)
+                last_x = angle_x
+
+            if abs(angle_y - last_y) > 2:
+                set_servo(servo_y, angle_y)
+                last_y = angle_y
+
+        except:
+            pass
+
+    # -------- ULTRASONIC SCAN --------
+    set_servo(servo_scan, scan_angle)
+
+    distance = get_distance()
+
+    print("Distance:", distance)
+
+    # -------- TARGET DETECTION + LASER --------
+    if distance < DETECTION_DISTANCE:
+        print("⚠ Target Detected")
+        laser.on()
+
+    else:
+        laser.off()
+
+    # -------- SWEEP MOTION --------
+    scan_angle += direction * 5
+
+    if scan_angle >= 180:
+        scan_angle = 180
+        direction = -1
+
+    if scan_angle <= 0:
+        scan_angle = 0
+        direction = 1
+
+    time.sleep(0.05)
