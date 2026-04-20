@@ -1,0 +1,99 @@
+from machine import Pin, PWM, time_pulse_us
+import network, espnow, time
+
+# ---------------- WIFI + ESP-NOW ----------------
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+wlan.config(channel=1)
+
+e = espnow.ESPNow()
+e.active(True)
+
+print("Receiver ready...")
+
+# ---------------- SERVOS ----------------
+servo_x = PWM(Pin(18), freq=50)  # up/down
+servo_y = PWM(Pin(19), freq=50)  # left/right
+scan_servo = PWM(Pin(25), freq=50)  # ultrasonic scan
+
+def set_servo(servo, angle):
+    duty = int(26 + (angle / 180) * (123 - 26))
+    servo.duty(duty)
+
+current_x = 90
+current_y = 90
+
+# ---------------- ULTRASONIC ----------------
+trig = Pin(33, Pin.OUT)
+echo = Pin(32, Pin.IN)
+
+def get_distance():
+    trig.off()
+    time.sleep_us(2)
+
+    trig.on()
+    time.sleep_us(10)
+    trig.off()
+
+    duration = time_pulse_us(echo, 1, 30000)
+
+    if duration < 0:
+        return 999
+
+    return (duration * 0.0343) / 2
+
+# ---------------- LASER ----------------
+laser = Pin(23, Pin.OUT)
+
+# ---------------- SCAN SETTINGS ----------------
+scan_angle = 60
+direction = 1
+
+# ---------------- LOOP ----------------
+while True:
+
+    # ---- RECEIVE CONTROL ----
+    host, msg = e.recv()
+
+    if msg:
+        try:
+            pitch, roll = msg.decode().split(',')
+            pitch = float(pitch)
+            roll  = float(roll)
+
+            target_x = 90 + pitch * 2
+            target_y = 90 + roll * 2
+
+            target_x = max(0, min(180, target_x))
+            target_y = max(0, min(180, target_y))
+
+            current_x += (target_x - current_x) * 0.3
+            current_y += (target_y - current_y) * 0.3
+
+            set_servo(servo_x, int(current_x))
+            set_servo(servo_y, int(current_y))
+
+        except:
+            pass
+
+    # ---- SCANNING MOTION ----
+    scan_angle += direction * 2
+
+    if scan_angle >= 120:
+        direction = -1
+    elif scan_angle <= 60:
+        direction = 1
+
+    set_servo(scan_servo, scan_angle)
+
+    # ---- DISTANCE ----
+    distance = get_distance()
+    print("Distance:", distance)
+
+    # ---- LASER ----
+    if distance < 50:
+        laser.value(1)
+    else:
+        laser.value(0)
+
+    time.sleep(0.05)
