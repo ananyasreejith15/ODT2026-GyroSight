@@ -1,0 +1,40 @@
+from machine import Pin, I2C
+import network, espnow, math, time
+
+# ESP-NOW
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+
+e = espnow.ESPNow()
+e.active(True)
+
+peer = b'\x30\x76\xf5\xe7\xf5\xc0'
+e.add_peer(peer)
+
+# MPU
+i2c = I2C(0, scl=Pin(22), sda=Pin(21))
+i2c.writeto_mem(0x68, 0x6B, b'\x00')
+
+print("Ready")
+
+while True:
+    try:
+        data = i2c.readfrom_mem(0x68, 0x3B, 6)
+
+        ax = int.from_bytes(data[0:2], 'big', True)
+        ay = int.from_bytes(data[2:4], 'big', True)
+        az = int.from_bytes(data[4:6], 'big', True)
+
+        pitch = math.atan2(ax, az) * 180 / math.pi
+        roll  = math.atan2(ay, az) * 180 / math.pi
+
+
+        msg = "{:.2f},{:.2f}".format(pitch, roll)
+
+        e.send(peer, msg)
+        print("Sent:", msg)
+
+    except Exception as err:
+        print("Error:", err)
+
+    time.sleep(0.1)
