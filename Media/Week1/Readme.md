@@ -1,3 +1,1 @@
-GyroSight Video Links
-
-Components Video: https://youtube.com/shorts/2vmTLW1P-9M?si=qE4NOb32bQKA5xXn
+GyroSight Components Video: https://youtube.com/shorts/2vmTLW1P-9M?si=qE4NOb32bQKA5xXn
