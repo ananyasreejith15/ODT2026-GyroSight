@@ -1,0 +1,52 @@
+from machine import Pin, I2C
+import network
+import espnow
+import math
+import time
+
+# --------------------
+# WIFI + ESP-NOW
+# --------------------
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+wlan.config(channel=1)
+
+e = espnow.ESPNow()
+e.active(True)
+
+# 🔴 PUT RECEIVER MAC HERE
+peer = b'\x30\x76\xf5\xe7\xf5\xc0'
+e.add_peer(peer)
+
+# --------------------
+# MPU6050
+# --------------------
+i2c = I2C(0, scl=Pin(22), sda=Pin(21))
+MPU = 0x68
+i2c.writeto_mem(MPU, 0x6B, b'\x00')
+
+def read_mpu():
+    data = i2c.readfrom_mem(MPU, 0x3B, 6)
+    ax = int.from_bytes(data[0:2], 'big', True)
+    ay = int.from_bytes(data[2:4], 'big', True)
+    az = int.from_bytes(data[4:6], 'big', True)
+    return ax, ay, az
+
+# --------------------
+# LOOP
+# --------------------
+while True:
+    ax, ay, az = read_mpu()
+
+    pitch = math.atan2(ax, az) * 180 / math.pi
+    roll  = math.atan2(ay, az) * 180 / math.pi
+
+    msg = "{:.2f},{:.2f}".format(pitch, roll)
+
+    try:
+        e.send(peer, msg)
+        print("Sent:", msg)
+    except:
+        print("Send failed")
+
+    time.sleep(0.05)
