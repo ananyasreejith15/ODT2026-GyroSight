@@ -1,0 +1,58 @@
+from machine import Pin, PWM
+import network, espnow, time
+
+# ---------- ESP-NOW ----------
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+wlan.config(channel=1)
+
+e = espnow.ESPNow()
+e.active(True)
+
+print("Receiver ready...")
+
+# ---------- SERVOS ----------
+servo_x = PWM(Pin(18), freq=50)
+servo_y = PWM(Pin(19), freq=50)
+
+def set_servo(servo, angle):
+    duty = int(26 + (angle / 180) * (123 - 26))
+    servo.duty(duty)
+
+current_x = 90
+current_y = 90
+
+# dead zone threshold
+DEADZONE = 1.5
+
+while True:
+
+    host, msg = e.recv()
+
+    if msg:
+        try:
+            pitch, roll = msg.decode().split(',')
+            pitch = float(pitch)
+            roll  = float(roll)
+
+            # map tilt
+            target_x = 90 + pitch * 2
+            target_y = 90 + roll * 2
+
+            target_x = max(0, min(180, target_x))
+            target_y = max(0, min(180, target_y))
+
+            # 🔥 DEAD ZONE (ignore tiny jitter)
+            if abs(target_x - current_x) > DEADZONE:
+                current_x += (target_x - current_x) * 0.2
+
+            if abs(target_y - current_y) > DEADZONE:
+                current_y += (target_y - current_y) * 0.2
+
+            set_servo(servo_x, int(current_x))
+            set_servo(servo_y, int(current_y))
+
+        except:
+            pass
+
+    time.sleep(0.05)  # ⏱ adds smooth delay
